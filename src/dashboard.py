@@ -99,7 +99,7 @@ with st.sidebar.expander("💰 가격 및 면적 조건", expanded=True):
 
 # 신축/구축 필터 (추가)
 st.sidebar.subheader("🏗️ 건물 연식")
-df['is_new'] = df['completionConfirmedDateUtc'].apply(lambda x: "신축급(5년내)" if isinstance(x, str) and "2020" in x or "2021" in x or "2022" in x or "2023" in x or "2024" in x or "2025" in x or "2026" in x else "일반/구축")
+df['is_new'] = df['completionConfirmedDateUtc'].apply(lambda x: "신축급(5년내)" if isinstance(x, str) and any(year in x for year in ["2020", "2021", "2022", "2023", "2024", "2025", "2026"]) else "일반/구축")
 age_options = ["전체"] + sorted(df['is_new'].unique().tolist())
 selected_age = st.sidebar.radio("건물 구분", age_options)
 
