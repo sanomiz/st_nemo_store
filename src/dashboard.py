@@ -119,8 +119,63 @@ if selected_age != "전체":
 
 filtered_df = df[mask].copy()
 
-# ... (중략: 상세 페이지 및 추천 로직 추가 부분) ...
+# 정렬 적용
+if sort_option == "월세 낮은순": filtered_df = filtered_df.sort_values('monthlyRent')
+elif sort_option == "가성비 좋은순": filtered_df = filtered_df.sort_values('rent_per_area')
+elif sort_option == "면적 넓은순": filtered_df = filtered_df.sort_values('size', ascending=False)
 
+# 메인 화면
+st.title("🏙️ Nemostore Greatness BI Dashboard")
+st.caption("비즈니스 인텔리전스 기반 상권 가성비 분석 플랫폼")
+st.markdown("---")
+
+# 탭 구성
+tab_gallery, tab_map, tab_analytics, tab_compare = st.tabs([
+    "🖼️ 매물 갤러리 (Gallery View)", 
+    "🗺️ 지도 분석 (Map View)", 
+    "📈 시장 통계 (Market Analytics)", 
+    "⚖️ 매물 비교 (Benchmarking)"
+])
+
+# 상세 페이지 상태 관리
+if 'selected_item_id' not in st.session_state:
+    st.session_state.selected_item_id = None
+
+with tab_gallery:
+    st.header("🖼️ 매물 갤러리")
+    
+    # 갤러리 뷰 (Grid)
+    n_cols = 4
+    for i in range(0, len(filtered_df), n_cols):
+        cols = st.columns(n_cols)
+        for j in range(n_cols):
+            if i + j < len(filtered_df):
+                item = filtered_df.iloc[i + j]
+                with cols[j]:
+                    # 카드 형태 레이아웃
+                    img_url = item['smallPhotoList'][0] if item['smallPhotoList'] else (item['previewPhotoUrl'] if item['previewPhotoUrl'] else "https://via.placeholder.com/150")
+                    st.image(img_url, use_container_width=True)
+                    st.markdown(f"**{item['businessMiddleCodeName']}**")
+                    st.markdown(f"**월세 {item['monthlyRent']:,}** / **보증금 {item['deposit']:,}**")
+                    st.caption(f"{item['nearSubwayStation']} | {item['size']}㎡")
+                    if st.button("상세보기", key=f"btn_{item['id']}"):
+                        st.session_state.selected_item_id = item['id']
+                        st.rerun()
+    
+    # 하단 상세 보기 섹션
+    if st.session_state.selected_item_id:
+        st.markdown("---")
+        st.subheader("📝 매물 상세 정보")
+        detail = df[df['id'] == st.session_state.selected_item_id].iloc[0]
+        
+        d_col1, d_col2 = st.columns([1, 1])
+        with d_col1:
+            # 이미지 갤러리 (멀티 이미지 지원)
+            if detail['smallPhotoList']:
+                st.image(detail['smallPhotoList'], use_container_width=True, caption=[f"이미지 {k+1}" for k in range(len(detail['smallPhotoList']))])
+            else:
+                st.image(detail['previewPhotoUrl'], use_container_width=True)
+        
         with d_col2:
             st.title(detail['title'])
             st.markdown("---")
@@ -146,7 +201,6 @@ filtered_df = df[mask].copy()
             
             # Smart Recommendation (유사 매물 추천)
             st.subheader("💡 현재 매물과 유사한 추천 매물")
-            # 기준: 동일 업종 내에서 월세 ±20%, 면적 ±30% 차이 나는 매물 중 가성비 좋은 순 3개
             same_biz_df = df[(df['businessLargeCodeName'] == detail['businessLargeCodeName']) & (df['id'] != detail['id'])]
             similar_df = same_biz_df[
                 (same_biz_df['monthlyRent'].between(detail['monthlyRent']*0.8, detail['monthlyRent']*1.2)) &
@@ -173,7 +227,6 @@ with tab_map:
     st.header("🗺️ 매물 위치 및 지역 밀집도")
     st.info("지도상의 포인트 크기는 매물 면적을, 색상은 가성비(단위 임대료)를 나타냅니다.")
     if not filtered_df.empty:
-        # Plotly Scatter Mapbox
         fig_map = px.scatter_mapbox(filtered_df, lat="lat", lon="lon", 
                                     hover_name="title", 
                                     hover_data={
@@ -187,7 +240,6 @@ with tab_map:
         fig_map.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
         st.plotly_chart(fig_map, use_container_width=True)
         
-        # 지역별 밀집도 테이블 (추가)
         st.subheader("📊 지역별 매물 밀집도")
         density = filtered_df.groupby('nearSubwayStation').size().reset_index(name='매물수')
         st.bar_chart(density.set_index('nearSubwayStation'))
@@ -199,7 +251,6 @@ with tab_analytics:
     
     a_col1, a_col2 = st.columns(2)
     with a_col1:
-        # 층별 임대료 분석 (정제)
         floor_rent = filtered_df.groupby('floor')['monthlyRent'].mean().sort_index().reset_index()
         fig_floor = px.bar(floor_rent, x='floor', y='monthlyRent', 
                            title="층별 평균 월세 분석", 
@@ -208,14 +259,12 @@ with tab_analytics:
         st.plotly_chart(fig_floor, use_container_width=True)
         
     with a_col2:
-        # 인기 매물 분석 (조회수/찜수)
         fig_pop = px.scatter(filtered_df, x='viewCount', y='favoriteCount', size='monthlyRent', 
                              color='businessLargeCodeName', hover_name='title',
                              title="매물 관심도 분석 (X: 조회수, Y: 찜수)",
                              labels={'viewCount': '조회수', 'favoriteCount': '관심(찜)수'})
         st.plotly_chart(fig_pop, use_container_width=True)
 
-    # 역세권별 가성비 트리맵
     st.subheader("🚉 역세권별 가성비 효율성 맵")
     fig_tree = px.treemap(filtered_df, path=['nearSubwayStation', 'businessLargeCodeName'], values='size',
                           color='rent_per_area', color_continuous_scale='RdYlGn_r',
@@ -237,21 +286,18 @@ with tab_compare:
                 st.image(c_item['previewPhotoUrl'] if c_item['previewPhotoUrl'] else "https://via.placeholder.com/150", use_container_width=True)
                 st.subheader(c_item['title'])
                 
-                # 가성비 벤치마킹 게이지 (Plotly)
                 station_avg_rpa = df[df['nearSubwayStation'] == c_item['nearSubwayStation']]['rent_per_area'].mean()
                 rpa_diff_pct = ((c_item['rent_per_area'] - station_avg_rpa) / station_avg_rpa) * 100 if station_avg_rpa > 0 else 0
                 
                 st.metric("단위당 임대료 가점", f"{c_item['rent_per_area']:.2f}만원/㎡", 
                           delta=f"{rpa_diff_pct:+.1f}% (지역평균대비)", delta_color="inverse")
                 
-                # 상세 데이터 카드 (한글 변환)
                 st.markdown("---")
                 st.write(f"🏢 **업종**: {c_item['businessLargeCodeName']}")
                 st.write(f"💰 **보증금**: {c_item['deposit']:,}만원")
                 st.write(f"🏢 **월세**: {c_item['monthlyRent']:,}만원")
                 st.write(f"📏 **면적**: {c_item['size']}㎡")
                 
-                # Gauge Chart
                 fig_g = go.Figure(go.Indicator(
                     mode = "gauge+number", value = c_item['rent_per_area'],
                     title = {'text': "가성비 게이지", 'font': {'size': 14}},
@@ -268,7 +314,6 @@ with tab_compare:
         st.warning("상단에서 비교할 매물을 선택해 주세요.")
 
 st.markdown("---")
-# 데이터 테이블 (마지막에 위치하여 전체 데이터 확인용)
 with st.expander("📂 검색 결과 전체 데이터 보기"):
     st.dataframe(filtered_df[['title', 'businessLargeCodeName', 'nearSubwayStation', 'deposit', 'monthlyRent', 'premium', 'size', 'floor']].rename(columns={
         'title': '매물명',
